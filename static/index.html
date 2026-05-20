@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face ID Pro</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root { --bg: #0a0e1a; --card: #131a2e; --border: #1e2a45; --accent: #3b82f6; --accent2: #10b981; --danger: #ef4444; --text: #e2e8f0; --muted: #64748b; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+        .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+        @media (max-width: 768px) { .app { grid-template-columns: 1fr; } .sidebar { display: none; } }
+        .sidebar { background: var(--card); border-right: 1px solid var(--border); padding: 20px 0; display: flex; flex-direction: column; }
+        .logo { padding: 0 20px 24px; font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+        .nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 0.88rem; color: var(--muted); transition: all 0.15s; border-left: 3px solid transparent; }
+        .nav-item:hover { background: rgba(59,130,246,0.05); color: var(--text); }
+        .nav-item.active { background: rgba(59,130,246,0.1); color: var(--accent); border-left-color: var(--accent); }
+        .esp-status { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 0.85rem; }
+        .esp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .esp-dot.online { background: #10b981; box-shadow: 0 0 6px #10b981; }
+        .esp-dot.offline { background: #6b7280; }
+        .main { padding: 24px 32px; overflow-y: auto; }
+        .page { display: none; } .page.active { display: block; }
+        .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+        .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+        .stat-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+        .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 14px; }
+        .form-group { margin-bottom: 14px; }
+        .form-label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 5px; }
+        .form-input { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.9rem; }
+        .form-input:focus { outline: none; border-color: var(--accent); }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: var(--accent2); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .btn-ghost:hover { background: var(--border); }
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+        .btn-lg { padding: 14px 28px; font-size: 1rem; }
+        .alert { padding: 14px 18px; border-radius: 8px; margin-top: 14px; font-size: 0.88rem; display: none; }
+        .alert.show { display: block; }
+        .alert-success { background: #052e16; border: 1px solid #166534; color: #86efac; }
+        .alert-error { background: #2d0a0a; border: 1px solid #991b1b; color: #fca5a5; }
+        .alert-info { background: #1e1b4b; border: 1px solid #3730a3; color: #a5b4fc; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th { text-align: left; padding: 10px 12px; font-size: 0.78rem; color: var(--muted); border-bottom: 1px solid var(--border); }
+        .table td { padding: 11px 12px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+        .badge-ok { background: #065f46; color: #6ee7b7; }
+        .badge-unknown { background: #78350f; color: #fcd34d; }
+        .badge-noface { background: #1f2937; color: #9ca3af; }
+        .badge-samples { background: #1e3a5f; color: #7dd3fc; }
+        .log-entry { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+        .log-time { color: var(--muted); min-width: 65px; }
+        /* ENROLLMENT */
+        .enroll-container { text-align: center; }
+        .enroll-video-wrap { position: relative; width: 320px; height: 320px; margin: 0 auto; border-radius: 50%; overflow: hidden; border: 4px solid var(--border); }
+        .enroll-video-wrap video { width: 100%; height: 100%; object-fit: cover; }
+        .enroll-video-wrap.capturing { border-color: var(--accent2); box-shadow: 0 0 20px rgba(16,185,129,0.3); }
+        .enroll-ring { position: absolute; inset: -4px; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--accent); animation: spin 2s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .enroll-instruction { font-size: 1.2rem; font-weight: 600; margin: 20px 0 8px; }
+        .enroll-sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+        .enroll-progress { display: flex; gap: 6px; justify-content: center; margin: 16px 0; }
+        .enroll-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--border); transition: all 0.3s; }
+        .enroll-dot.done { background: var(--accent2); }
+        .enroll-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+        .enroll-thumbs { display: flex; gap: 6px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+        .enroll-thumbs img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent2); }
+        .verify-result { text-align: center; padding: 20px; }
+        .verify-name { font-size: 2.2rem; font-weight: 700; margin: 10px 0; }
+        .verify-confidence { color: var(--muted); }
+    </style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="logo">🔐 Face ID Pro</div>
+        <div class="nav-item active" onclick="showPage('dashboard')">📊 Dashboard</div>
+        <div class="nav-item" onclick="showPage('register')">➕ Ro'yxatga olish</div>
+        <div class="nav-item" onclick="showPage('verify')">🔍 Tekshirish</div>
+        <div class="nav-item" onclick="showPage('people')">👥 Odamlar</div>
+        <div class="nav-item" onclick="showPage('logs')">📋 Tarix</div>
+        <div class="esp-status">
+            <span class="esp-dot offline" id="espDot"></span>
+            <span id="espLabel">ESP32: —</span>
+        </div>
+    </aside>
+    <main class="main">
+
+
+        <!-- DASHBOARD -->
+        <div id="dashboard" class="page active">
+            <h2 class="page-title">Dashboard</h2>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value" id="statFaces">0</div><div class="stat-label">Odamlar</div></div>
+                <div class="stat-card"><div class="stat-value" id="statVerify">0</div><div class="stat-label">Tekshiruvlar</div></div>
+                <div class="stat-card"><div class="stat-value" id="statRecognized">0</div><div class="stat-label">Tanilgan</div></div>
+                <div class="stat-card"><div class="stat-value" style="color:var(--danger)" id="statUnknown">0</div><div class="stat-label">Tanilmagan</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div class="card">
+                    <div class="card-title">📹 Live Stream</div>
+                    <div id="streamWrap" style="text-align:center">
+                        <img id="streamImg" style="width:100%;border-radius:8px;background:#000;min-height:200px;display:none" alt="ESP32 Stream">
+                        <div id="streamOff" style="padding:40px;color:var(--muted)">ESP32 offline — stream yo'q</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title">📡 ESP32-CAM</div>
+                        <div id="espInfo" style="color:var(--muted)">Yuklanmoqda...</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">🕐 So'nggi hodisalar</div>
+                        <div id="recentLogs"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- REGISTER (Face ID style enrollment) -->
+        <div id="register" class="page">
+            <h2 class="page-title">Yuz ro'yxatga olish</h2>
+            <div class="card enroll-container">
+                <!-- Step 1: Enter name -->
+                <div id="enrollStep1">
+                    <div style="font-size:3rem;margin-bottom:16px">👤</div>
+                    <p style="margin-bottom:16px;color:var(--muted)">Kamera oldida boshingizni turli tomonga burasiz — tizim avtomatik rasmlarni oladi</p>
+                    <div class="form-group" style="max-width:300px;margin:0 auto">
+                        <input type="text" class="form-input" id="regName" placeholder="Ismingizni kiriting" style="text-align:center;font-size:1.1rem">
+                    </div>
+                    <button class="btn btn-primary btn-lg" onclick="startEnrollment()" style="margin-top:16px">Boshlash →</button>
+                </div>
+                <!-- Step 2: Camera capture -->
+                <div id="enrollStep2" style="display:none">
+                    <div class="enroll-video-wrap" id="enrollVideoWrap">
+                        <video id="enrollVideo" autoplay playsinline muted></video>
+                        <div class="enroll-ring" id="enrollRing" style="display:none"></div>
+                    </div>
+                    <div class="enroll-progress" id="enrollProgress"></div>
+                    <div class="enroll-instruction" id="enrollInstruction">Tayyor bo'ling...</div>
+                    <div class="enroll-sub" id="enrollSub"></div>
+                    <div class="enroll-thumbs" id="enrollThumbs"></div>
+                    <button class="btn btn-ghost btn-sm" onclick="cancelEnrollment()" style="margin-top:12px">❌ Bekor qilish</button>
+                </div>
+                <!-- Step 3: Done -->
+                <div id="enrollStep3" style="display:none">
+                    <div style="font-size:4rem;margin-bottom:12px">✅</div>
+                    <div class="enroll-instruction" id="enrollDoneName"></div>
+                    <div class="enroll-sub" id="enrollDoneInfo"></div>
+                    <div class="enroll-thumbs" id="enrollDoneThumbs"></div>
+                    <button class="btn btn-primary" onclick="resetEnrollment()" style="margin-top:20px">Yana qo'shish</button>
+                </div>
+                <div id="regAlert" class="alert"></div>
+            </div>
+        </div>
+
+        <!-- VERIFY -->
+        <div id="verify" class="page">
+            <h2 class="page-title">Yuzni tekshirish</h2>
+            <div class="card" style="text-align:center">
+                <div class="enroll-video-wrap" id="verifyVideoWrap" style="border-color:var(--border)">
+                    <video id="verifyVideo" autoplay playsinline muted></video>
+                </div>
+                <div style="margin-top:16px">
+                    <button class="btn btn-success btn-lg" onclick="startVerify()">📷 Kamerani ochish</button>
+                    <button class="btn btn-primary btn-lg" onclick="snapVerify()" id="verifySnapBtn" style="display:none">🔍 Tekshirish</button>
+                </div>
+                <div id="verResult" class="alert"></div>
+            </div>
+        </div>
+
+        <!-- PEOPLE -->
+        <div id="people" class="page">
+            <h2 class="page-title">Odamlar</h2>
+            <div class="card">
+                <table class="table">
+                    <thead><tr><th>Ism</th><th>Rasmlar</th><th>Sana</th><th></th></tr></thead>
+                    <tbody id="peopleTable"></tbody>
+                </table>
+                <div id="peopleEmpty" style="text-align:center;padding:40px;color:var(--muted);display:none">Hech kim yo'q</div>
+            </div>
+        </div>
+
+        <!-- LOGS -->
+        <div id="logs" class="page">
+            <h2 class="page-title">Tarix</h2>
+            <div class="card">
+                <button class="btn btn-ghost btn-sm" onclick="loadLogs()" style="margin-bottom:12px">🔄 Yangilash</button>
+                <table class="table">
+                    <thead><tr><th>Vaqt</th><th>Hodisa</th><th>Ism</th><th>Ishonch</th><th>Manba</th></tr></thead>
+                    <tbody id="logsTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+
+<script>
+const API = window.location.origin;
+
+// ─── ENROLLMENT STATE ───────────────────────────────────────────────────────
+const ENROLL_STEPS = [
+    { instruction: "To'g'ri qarang", sub: "Kameraga to'g'ri qarang", icon: "😐" },
+    { instruction: "Sekin chapga buring", sub: "Boshingizni chapga buring", icon: "👈" },
+    { instruction: "Sekin o'ngga buring", sub: "Boshingizni o'ngga buring", icon: "👉" },
+    { instruction: "Biroz yuqoriga qarang", sub: "Iyagingizni ko'taring", icon: "👆" },
+    { instruction: "Biroz pastga qarang", sub: "Boshingizni pastga egingiz", icon: "👇" },
+    { instruction: "Tabassum qiling 😊", sub: "Tabiiy tabassum", icon: "😊" },
+];
+
+let enrollStream = null;
+let enrollBlobs = [];
+let enrollStep = 0;
+let enrollTimer = null;
+
+async function startEnrollment() {
+    const name = document.getElementById('regName').value.trim();
+    if (!name) { showAlert('regAlert', 'error', 'Ism kiriting!'); return; }
+    hideAlert('regAlert');
+
+    document.getElementById('enrollStep1').style.display = 'none';
+    document.getElementById('enrollStep2').style.display = 'block';
+    document.getElementById('enrollStep3').style.display = 'none';
+
+    // Build progress dots
+    const prog = document.getElementById('enrollProgress');
+    prog.innerHTML = ENROLL_STEPS.map((_, i) => `<div class="enroll-dot" id="edot${i}"></div>`).join('');
+
+    enrollBlobs = [];
+    enrollStep = 0;
+
+    try {
+        enrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+        document.getElementById('enrollVideo').srcObject = enrollStream;
+        setTimeout(() => runEnrollStep(), 1500);
+    } catch (e) {
+        showAlert('regAlert', 'error', 'Kamera ochilmadi: ' + e.message);
+        cancelEnrollment();
+    }
+}
+
+function runEnrollStep() {
+    if (enrollStep >= ENROLL_STEPS.length) {
+        finishEnrollment();
+        return;
+    }
+    const step = ENROLL_STEPS[enrollStep];
+    document.getElementById('enrollInstruction').textContent = step.icon + ' ' + step.instruction;
+    document.getElementById('enrollSub').textContent = step.sub;
+
+    // Mark active dot
+    document.querySelectorAll('.enroll-dot').forEach((d, i) => {
+        d.classList.remove('active');
+        if (i < enrollStep) d.classList.add('done');
+        if (i === enrollStep) d.classList.add('active');
+    });
+
+    // Show ring animation
+    document.getElementById('enrollRing').style.display = 'block';
+
+    // Auto-capture after 2 seconds
+    enrollTimer = setTimeout(() => captureEnrollFrame(), 2000);
+}
+
+function captureEnrollFrame() {
+    const video = document.getElementById('enrollVideo');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    // Flash effect
+    const wrap = document.getElementById('enrollVideoWrap');
+    wrap.classList.add('capturing');
+    setTimeout(() => wrap.classList.remove('capturing'), 300);
+
+    canvas.toBlob(blob => {
+        enrollBlobs.push(blob);
+        // Add thumbnail
+        const thumb = document.createElement('img');
+        thumb.src = URL.createObjectURL(blob);
+        document.getElementById('enrollThumbs').appendChild(thumb);
+
+        // Mark done
+        const dot = document.getElementById(`edot${enrollStep}`);
+        if (dot) { dot.classList.remove('active'); dot.classList.add('done'); }
+
+        enrollStep++;
+        setTimeout(() => runEnrollStep(), 800);
+    }, 'image/jpeg', 0.9);
+}
+
+async function finishEnrollment() {
+    document.getElementById('enrollInstruction').textContent = '⏳ Saqlanmoqda...';
+    document.getElementById('enrollSub').textContent = '';
+    document.getElementById('enrollRing').style.display = 'none';
+
+    // Stop camera
+    if (enrollStream) { enrollStream.getTracks().forEach(t => t.stop()); enrollStream = null; }
+
+    const name = document.getElementById('regName').value.trim();
+    const fd = new FormData();
+    enrollBlobs.forEach((b, i) => fd.append('files', b, `face_${i}.jpg`));
+
+    try {
+        const res = await fetch(`${API}/register?name=${encodeURIComponent(name)}`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (res.ok) {
+            document.getElementById('enrollStep2').style.display = 'none';
+            document.getElementById('enrollStep3').style.display = 'block';
+            document.getElementById('enrollDoneName').textContent = `"${name}" ro'yxatga olindi!`;
+            document.getElementById('enrollDoneInfo').textContent = data.message;
+            // Copy thumbs
+            document.getElementById('enrollDoneThumbs').innerHTML = document.getElementById('enrollThumbs').innerHTML;
+        } else {
+            showAlert('regAlert', 'error', `❌ ${data.detail}`);
+            resetEnrollment();
+        }
+    } catch (e) {
+        showAlert('regAlert', 'error', '❌ Server bilan aloqa yo\'q');
+        resetEnrollment();
+    }
+}
+
+function cancelEnrollment() {
+    if (enrollTimer) clearTimeout(enrollTimer);
+    if (enrollStream) { enrollStream.getTracks().forEach(t => t.stop()); enrollStream = null; }
+    resetEnrollment();
+}
+
+function resetEnrollment() {
+    document.getElementById('enrollStep1').style.display = 'block';
+    document.getElementById('enrollStep2').style.display = 'none';
+    document.getElementById('enrollStep3').style.display = 'none';
+    document.getElementById('enrollThumbs').innerHTML = '';
+    document.getElementById('regName').value = '';
+    hideAlert('regAlert');
+    enrollBlobs = [];
+    enrollStep = 0;
+}
+</script>
+
+
+<script>
+// ─── VERIFY ─────────────────────────────────────────────────────────────────
+let verifyStream = null;
+
+async function startVerify() {
+    try {
+        verifyStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+        document.getElementById('verifyVideo').srcObject = verifyStream;
+        document.getElementById('verifySnapBtn').style.display = 'inline-flex';
+        document.getElementById('verifyVideoWrap').style.borderColor = 'var(--accent2)';
+    } catch (e) { showAlert('verResult', 'error', 'Kamera: ' + e.message); }
+}
+
+async function snapVerify() {
+    hideAlert('verResult');
+    const video = document.getElementById('verifyVideo');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(async blob => {
+        const fd = new FormData();
+        fd.append('file', blob, 'verify.jpg');
+        try {
+            const res = await fetch(`${API}/verify?source=web`, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                showAlert('verResult', 'success',
+                    `<div class="verify-result"><span class="badge badge-ok">TANILDI</span><div class="verify-name">${data.name}</div><div class="verify-confidence">Ishonch: ${(data.confidence * 100).toFixed(1)}%</div></div>`);
+            } else if (data.status === 'no_face') {
+                showAlert('verResult', 'info', '😶 Yuz topilmadi — kameraga to\'g\'ri qarang');
+            } else if (data.status === 'empty') {
+                showAlert('verResult', 'info', '📋 Avval kimnidir ro\'yxatga oling');
+            } else {
+                showAlert('verResult', 'error',
+                    `<div class="verify-result"><span class="badge badge-unknown">TANILMADI</span><div class="verify-confidence">Ishonch: ${(data.confidence * 100).toFixed(1)}%</div></div>`);
+            }
+        } catch (e) { showAlert('verResult', 'error', '❌ Server bilan aloqa yo\'q'); }
+    }, 'image/jpeg', 0.9);
+}
+
+// ─── PEOPLE ─────────────────────────────────────────────────────────────────
+async function loadPeople() {
+    try {
+        const res = await fetch(`${API}/faces`);
+        const data = await res.json();
+        const tbody = document.getElementById('peopleTable');
+        const empty = document.getElementById('peopleEmpty');
+        if (data.faces.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+        empty.style.display = 'none';
+        tbody.innerHTML = data.faces.map(f => `<tr>
+            <td><strong>${f.name}</strong></td>
+            <td><span class="badge badge-samples">${f.samples} ta</span></td>
+            <td style="color:var(--muted);font-size:0.8rem">${f.created ? new Date(f.created).toLocaleDateString() : '—'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteFace('${f.name}')">🗑</button></td>
+        </tr>`).join('');
+    } catch (e) {}
+}
+
+async function deleteFace(name) {
+    if (!confirm(`"${name}" ni o'chirish?`)) return;
+    await fetch(`${API}/faces/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    loadPeople();
+}
+
+// ─── LOGS ───────────────────────────────────────────────────────────────────
+async function loadLogs() {
+    try {
+        const res = await fetch(`${API}/logs?limit=50`);
+        const data = await res.json();
+        document.getElementById('logsTable').innerHTML = data.logs.map(l => {
+            const t = new Date(l.time);
+            const badge = l.action === 'recognized' ? 'badge-ok' : l.action.includes('unknown') ? 'badge-unknown' : 'badge-noface';
+            const label = l.action === 'recognized' ? 'Tanildi' : l.action === 'unknown' ? 'Noma\'lum' : l.action;
+            return `<tr>
+                <td style="color:var(--muted);font-size:0.8rem">${t.toLocaleTimeString()}</td>
+                <td><span class="badge ${badge}">${label}</span></td>
+                <td>${l.name || '—'}</td>
+                <td>${l.confidence ? (l.confidence * 100).toFixed(1) + '%' : '—'}</td>
+                <td style="color:var(--muted)">${l.source}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {}
+}
+
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const [sr, er, lr] = await Promise.all([
+            fetch(`${API}/stats`), fetch(`${API}/esp32/status`), fetch(`${API}/logs?limit=5`)
+        ]);
+        const s = await sr.json(), esp = await er.json(), logs = await lr.json();
+
+        document.getElementById('statFaces').textContent = s.registered_faces;
+        document.getElementById('statVerify').textContent = s.total_verifications;
+        document.getElementById('statRecognized').textContent = s.total_recognized;
+        document.getElementById('statUnknown').textContent = s.total_unknown;
+
+        // Stream
+        const streamImg = document.getElementById('streamImg');
+        const streamOff = document.getElementById('streamOff');
+        if (esp.online) {
+            const streamUrl = `http://${esp.ip}/stream`;
+            if (streamImg.src !== streamUrl) streamImg.src = streamUrl;
+            streamImg.style.display = 'block';
+            streamOff.style.display = 'none';
+        } else {
+            streamImg.style.display = 'none';
+            streamImg.src = '';
+            streamOff.style.display = 'block';
+        }
+
+        const dot = document.getElementById('espDot');
+        const label = document.getElementById('espLabel');
+        dot.className = `esp-dot ${esp.online ? 'online' : 'offline'}`;
+        label.textContent = esp.online ? 'ESP32: Online' : 'ESP32: Offline';
+        document.getElementById('espInfo').innerHTML = esp.online
+            ? `<span style="color:var(--accent2)">● Online</span> — ${esp.last_result ? (esp.last_result.name || esp.last_result.message) : ''}`
+            : `<span style="color:var(--muted)">○ Offline</span>${esp.last_seen ? ' — So\'nggi: ' + new Date(esp.last_seen).toLocaleTimeString() : ''}`;
+
+        document.getElementById('recentLogs').innerHTML = logs.logs.length === 0
+            ? '<div style="color:var(--muted)">Hodisalar yo\'q</div>'
+            : logs.logs.map(l => {
+                const icon = l.action === 'recognized' ? '🟢' : l.action === 'unknown' ? '🟡' : '⚪';
+                return `<div class="log-entry"><span class="log-time">${new Date(l.time).toLocaleTimeString()}</span>${icon} ${l.name || l.action}</div>`;
+            }).join('');
+    } catch (e) {}
+}
+
+// ─── NAVIGATION ─────────────────────────────────────────────────────────────
+function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(name).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const pages = ['dashboard','register','verify','people','logs'];
+    const idx = pages.indexOf(name);
+    if (idx >= 0) document.querySelectorAll('.nav-item')[idx].classList.add('active');
+    // Clear all alerts on page switch
+    document.querySelectorAll('.alert').forEach(a => { a.className = 'alert'; a.innerHTML = ''; });
+    if (name === 'dashboard') loadDashboard();
+    if (name === 'people') loadPeople();
+    if (name === 'logs') loadLogs();
+}
+
+function showAlert(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = `alert show alert-${type}`;
+    el.innerHTML = msg;
+}
+
+function hideAlert(id) {
+    const el = document.getElementById(id);
+    el.className = 'alert';
+    el.innerHTML = '';
+}
+
+// Init
+loadDashboard();
+setInterval(loadDashboard, 5000);
+</script>
+</body>
+</html>

@@ -3,6 +3,4 @@ uvicorn
 python-multipart
 numpy
 opencv-python-headless
-dlib
-face_recognition
-setuptools
+onnxruntime

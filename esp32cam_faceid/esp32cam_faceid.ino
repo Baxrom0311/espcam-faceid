@@ -3,9 +3,9 @@
 #include "esp_camera.h"
 
 // ===== SOZLAMALAR =====
-const char* ssid = "WIFI_NOMI";
-const char* password = "WIFI_PAROLI";
-const char* serverUrl = "http://192.168.1.100:8000/verify";
+const char* ssid = "Incubatsiya_2.4G";
+const char* password = "123456789";
+const char* serverUrl = "http://192.168.0.165:8000/verify";
 
 #define FRAME_SIZE FRAMESIZE_QVGA   // 320x240
 #define JPEG_QUALITY 12
@@ -105,12 +105,6 @@ bool sendPhoto(camera_fb_t* fb) {
 
   uint32_t totalLen = head.length() + fb->len + tail.length();
   http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-
-  // Stream yuborish — malloc kerak emas, bo'laklarga yuboramiz
-  http.addHeader("Content-Length", String(totalLen));
-
-  // WiFiClient orqali to'g'ridan-to'g'ri yozish
-  client.connect("192.168.1.100", 8000);
 
   // Oddiy POST — kichik rasm uchun malloc xavfsiz
   if (fb->len > 50000) {

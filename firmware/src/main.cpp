@@ -4,13 +4,19 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
+#include <WiFiClientSecure.h>
+
 // ===== SOZLAMALAR =====
 const char* ssid = "Incubatsiya_2.4G";
 const char* password = "123456789";
-const char* verifyUrl = "http://192.168.0.165:8000/verify";
+const char* verifyUrl = "https://faceid.boos.uz/verify";
 
 #define VERIFY_INTERVAL_MS 4000
 #define FLASH_GPIO_NUM 4
+#define RELAY_GPIO_NUM 13
+#define RELAY_ON_TIME_MS 20000
+
+static unsigned long relayOffTime = 0;
 
 // ===== AI-Thinker ESP32-CAM pinlar =====
 #define PWDN_GPIO_NUM     32
@@ -216,7 +222,8 @@ void verifyTask(void* param) {
     esp_camera_fb_return(fb);
 
     // Now send to server (camera is free for stream)
-    WiFiClient client;
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip cert verification
     HTTPClient http;
     http.begin(client, verifyUrl);
     http.setTimeout(5000);
@@ -247,9 +254,13 @@ void verifyTask(void* param) {
       Serial.printf("V: %s\n", response.c_str());
       if (response.indexOf("\"status\":\"ok\"") > -1) {
         faceRecognized = true;
+        // Relay ON + LED flash
+        digitalWrite(RELAY_GPIO_NUM, HIGH);
+        relayOffTime = millis() + RELAY_ON_TIME_MS;
         digitalWrite(FLASH_GPIO_NUM, HIGH);
         vTaskDelay(pdMS_TO_TICKS(300));
         digitalWrite(FLASH_GPIO_NUM, LOW);
+        Serial.println("RELAY ON — 20s");
       } else {
         faceRecognized = false;
       }
@@ -265,6 +276,8 @@ void setup() {
   Serial.begin(115200);
   pinMode(FLASH_GPIO_NUM, OUTPUT);
   digitalWrite(FLASH_GPIO_NUM, LOW);
+  pinMode(RELAY_GPIO_NUM, OUTPUT);
+  digitalWrite(RELAY_GPIO_NUM, LOW);
 
   Serial.println("\n\nESP32-CAM Face ID (esp_http_server)");
 
@@ -279,5 +292,11 @@ void setup() {
 
 // ===== LOOP =====
 void loop() {
-  delay(1000);
+  // Relay auto-off after 20s
+  if (relayOffTime > 0 && millis() >= relayOffTime) {
+    digitalWrite(RELAY_GPIO_NUM, LOW);
+    relayOffTime = 0;
+    Serial.println("RELAY OFF");
+  }
+  delay(100);
 }

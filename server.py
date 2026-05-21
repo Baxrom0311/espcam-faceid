@@ -347,6 +347,5 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    print("Server: http://localhost:8000")
-    print("Network: http://192.168.0.165:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Server: http://0.0.0.0:8050")
+    uvicorn.run(app, host="0.0.0.0", port=8050)

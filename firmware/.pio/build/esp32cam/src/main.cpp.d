@@ -243,4 +243,5 @@
  C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp32-camera/conversions/include/img_converters.h \
  C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp32-camera/conversions/include/esp_jpg_decode.h \
  C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_http_server/include/esp_http_server.h \
- C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/nghttp/port/include/http_parser.h
+ C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/nghttp/port/include/http_parser.h \
+ C:/Users/Sultan/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h

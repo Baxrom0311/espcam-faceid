@@ -104,21 +104,12 @@
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                 <div class="card">
-                    <div class="card-title">📹 Live Stream</div>
-                    <div id="streamWrap" style="text-align:center">
-                        <img id="streamImg" style="width:100%;border-radius:8px;background:#000;min-height:200px;display:none" alt="ESP32 Stream">
-                        <div id="streamOff" style="padding:40px;color:var(--muted)">ESP32 offline — stream yo'q</div>
-                    </div>
+                    <div class="card-title">📡 ESP32-CAM</div>
+                    <div id="espInfo" style="color:var(--muted)">Yuklanmoqda...</div>
                 </div>
-                <div>
-                    <div class="card">
-                        <div class="card-title">📡 ESP32-CAM</div>
-                        <div id="espInfo" style="color:var(--muted)">Yuklanmoqda...</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">🕐 So'nggi hodisalar</div>
-                        <div id="recentLogs"></div>
-                    </div>
+                <div class="card">
+                    <div class="card-title">🕐 So'nggi hodisalar</div>
+                    <div id="recentLogs"></div>
                 </div>
             </div>
         </div>
@@ -456,20 +447,6 @@ async function loadDashboard() {
         document.getElementById('statVerify').textContent = s.total_verifications;
         document.getElementById('statRecognized').textContent = s.total_recognized;
         document.getElementById('statUnknown').textContent = s.total_unknown;
-
-        // Stream
-        const streamImg = document.getElementById('streamImg');
-        const streamOff = document.getElementById('streamOff');
-        if (esp.online) {
-            const streamUrl = esp.stream_url || `http://${esp.ip}/stream`;
-            if (streamImg.src !== streamUrl) streamImg.src = streamUrl;
-            streamImg.style.display = 'block';
-            streamOff.style.display = 'none';
-        } else {
-            streamImg.style.display = 'none';
-            streamImg.src = '';
-            streamOff.style.display = 'block';
-        }
 
         const dot = document.getElementById('espDot');
         const label = document.getElementById('espLabel');

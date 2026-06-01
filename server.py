@@ -32,6 +32,8 @@ LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 COSINE_THRESHOLD = 0.363
+ESP32_OFFLINE_AFTER_SECONDS = 45
+INVALID_FACE_NAME_CHARS = set('<>:"/\\|?*')
 
 FACE_DETECT_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 FACE_RECOG_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
@@ -42,7 +44,15 @@ face_recognizer = None
 # Real-time state
 access_log: list = []
 stats = {"total_verifications": 0, "total_recognized": 0, "total_unknown": 0, "total_no_face": 0}
-esp32_status = {"last_seen": None, "ip": None, "last_result": None, "online": False}
+esp32_status = {
+    "last_seen": None,
+    "ip": None,
+    "stream_url": None,
+    "rssi": None,
+    "heap": None,
+    "last_result": None,
+    "online": False,
+}
 LOG_MAX = 200
 
 
@@ -73,8 +83,27 @@ def get_face_embedding(bgr: np.ndarray) -> np.ndarray | None:
     return face_recognizer.feature(aligned).flatten()
 
 
+def clean_face_name(name: str) -> str:
+    cleaned = name.strip()
+    if (
+        not cleaned
+        or cleaned in {".", ".."}
+        or any(ch in INVALID_FACE_NAME_CHARS or ord(ch) < 32 for ch in cleaned)
+    ):
+        raise HTTPException(400, "Ismda fayl nomi uchun yaroqsiz belgi bor")
+    return cleaned
+
+
+def face_data_path(name: str) -> Path:
+    cleaned = clean_face_name(name)
+    path = (FACES_DIR / f"{cleaned}.json").resolve()
+    if FACES_DIR.resolve() not in path.parents:
+        raise HTTPException(400, "Noto'g'ri ism")
+    return path
+
+
 def load_face_data(name: str) -> dict | None:
-    path = FACES_DIR / f"{name}.json"
+    path = face_data_path(name)
     if not path.exists():
         return None
     return json.loads(path.read_text())
@@ -103,6 +132,31 @@ def add_log_entry(action: str, name: str | None, confidence: float | None, sourc
     access_log.insert(0, entry)
     if len(access_log) > LOG_MAX:
         access_log.pop()
+
+
+def update_esp32_status(request: Request, payload: dict | None = None, result: dict | None = None):
+    payload = payload or {}
+    ip = payload.get("ip") or (request.client.host if request.client else None)
+    esp32_status["last_seen"] = datetime.now().isoformat()
+    esp32_status["ip"] = ip
+    esp32_status["online"] = True
+    if ip:
+        esp32_status["stream_url"] = payload.get("stream_url") or f"http://{ip}/stream"
+    if "rssi" in payload:
+        esp32_status["rssi"] = payload.get("rssi")
+    if "heap" in payload:
+        esp32_status["heap"] = payload.get("heap")
+    if result is not None:
+        esp32_status["last_result"] = result
+
+
+def refresh_esp32_online_state():
+    if not esp32_status["last_seen"]:
+        esp32_status["online"] = False
+        return
+    last = datetime.fromisoformat(esp32_status["last_seen"])
+    diff = (datetime.now() - last).total_seconds()
+    esp32_status["online"] = diff < ESP32_OFFLINE_AFTER_SECONDS
 
 
 @app.on_event("startup")
@@ -136,6 +190,7 @@ def index():
 @app.post("/register")
 async def register_face(name: str = Query(...), files: List[UploadFile] = File(...)):
     """Bitta odam uchun 1 yoki ko'p rasm bilan ro'yxatga olish. Ko'p rasm = aniqroq."""
+    name = clean_face_name(name)
     embeddings = []
 
     for file in files:
@@ -161,7 +216,7 @@ async def register_face(name: str = Query(...), files: List[UploadFile] = File(.
         "samples": len(embeddings),
         "created": datetime.now().isoformat(),
     }
-    (FACES_DIR / f"{name}.json").write_text(json.dumps(face_data))
+    face_data_path(name).write_text(json.dumps(face_data))
     add_log_entry("register", name, None, "web")
     return {
         "status": "ok",
@@ -173,6 +228,7 @@ async def register_face(name: str = Query(...), files: List[UploadFile] = File(.
 @app.post("/register/add")
 async def add_samples(name: str = Query(...), files: List[UploadFile] = File(...)):
     """Mavjud odamga qo'shimcha rasmlar qo'shish — aniqlikni oshiradi."""
+    name = clean_face_name(name)
     existing = load_face_data(name)
     if existing is None:
         raise HTTPException(404, f"'{name}' topilmadi. Avval /register dan foydalaning.")
@@ -204,7 +260,7 @@ async def add_samples(name: str = Query(...), files: List[UploadFile] = File(...
     existing["embedding"] = avg_embedding.tolist()
     existing["samples"] = total_samples
     existing["updated"] = datetime.now().isoformat()
-    (FACES_DIR / f"{name}.json").write_text(json.dumps(existing))
+    face_data_path(name).write_text(json.dumps(existing))
 
     add_log_entry("add_samples", name, None, "web")
     return {
@@ -225,9 +281,7 @@ async def verify_face(request: Request, file: UploadFile = File(...), source: st
 
     # Update ESP32 status
     if source == "esp32":
-        esp32_status["last_seen"] = datetime.now().isoformat()
-        esp32_status["ip"] = request.client.host
-        esp32_status["online"] = True
+        update_esp32_status(request)
 
     embedding = get_face_embedding(bgr)
     stats["total_verifications"] += 1
@@ -236,7 +290,7 @@ async def verify_face(request: Request, file: UploadFile = File(...), source: st
         stats["total_no_face"] += 1
         result = {"status": "no_face", "message": "Yuz topilmadi"}
         if source == "esp32":
-            esp32_status["last_result"] = result
+            update_esp32_status(request, result=result)
         add_log_entry("verify_no_face", None, None, source)
         return result
 
@@ -265,8 +319,20 @@ async def verify_face(request: Request, file: UploadFile = File(...), source: st
         add_log_entry("unknown", None, confidence, source)
 
     if source == "esp32":
-        esp32_status["last_result"] = result
+        update_esp32_status(request, result=result)
     return result
+
+
+@app.post("/esp32/heartbeat")
+async def esp32_heartbeat(request: Request):
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = {}
+    update_esp32_status(request, payload=payload)
+    return {"status": "ok", "online": True}
 
 
 # ─── FACES CRUD ──────────────────────────────────────────────────────────────
@@ -288,13 +354,15 @@ def list_faces():
 
 @app.put("/faces/{name}")
 async def rename_face(name: str, new_name: str = Query(...)):
-    path = FACES_DIR / f"{name}.json"
+    name = clean_face_name(name)
+    new_name = clean_face_name(new_name)
+    path = face_data_path(name)
     if not path.exists():
         raise HTTPException(404, f"'{name}' topilmadi")
     data = json.loads(path.read_text())
     data["name"] = new_name
     data["updated"] = datetime.now().isoformat()
-    new_path = FACES_DIR / f"{new_name}.json"
+    new_path = face_data_path(new_name)
     new_path.write_text(json.dumps(data))
     path.unlink()
     return {"status": "ok", "message": f"'{name}' → '{new_name}'"}
@@ -302,7 +370,8 @@ async def rename_face(name: str, new_name: str = Query(...)):
 
 @app.delete("/faces/{name}")
 def delete_face(name: str):
-    path = FACES_DIR / f"{name}.json"
+    name = clean_face_name(name)
+    path = face_data_path(name)
     if not path.exists():
         raise HTTPException(404, f"'{name}' topilmadi")
     path.unlink()
@@ -328,18 +397,16 @@ def get_logs(limit: int = Query(50)):
 
 @app.get("/esp32/status")
 def get_esp32_status():
-    if esp32_status["last_seen"]:
-        last = datetime.fromisoformat(esp32_status["last_seen"])
-        diff = (datetime.now() - last).total_seconds()
-        esp32_status["online"] = diff < 10
+    refresh_esp32_online_state()
     return esp32_status
 
 
 @app.get("/esp32/stream")
 def get_esp32_stream_url():
     """ESP32 stream URL ni qaytaradi (frontend to'g'ridan-to'g'ri ulanadi)"""
-    if esp32_status.get("ip"):
-        return {"url": f"http://{esp32_status['ip']}/stream"}
+    refresh_esp32_online_state()
+    if esp32_status.get("online") and esp32_status.get("stream_url"):
+        return {"url": esp32_status["stream_url"]}
     return {"url": None}
 
 

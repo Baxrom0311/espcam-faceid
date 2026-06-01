@@ -1,5 +1,6 @@
 venv/
 __pycache__/
 *.pyc
+firmware/.pio/
 faces/*.json
 .DS_Store

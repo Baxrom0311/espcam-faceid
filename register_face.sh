@@ -19,7 +19,7 @@ if [ ! -f "$PHOTO" ]; then
 fi
 
 echo "Ro'yxatga olish: $NAME ← $PHOTO"
-curl -s -X POST "$SERVER/register?name=$NAME" -F "file=@$PHOTO" | python3 -m json.tool
+curl -s -X POST "$SERVER/register?name=$NAME" -F "files=@$PHOTO" | python3 -m json.tool
 
 echo ""
 echo "Ro'yxatdagilar:"

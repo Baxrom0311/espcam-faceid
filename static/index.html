@@ -205,6 +205,12 @@
 <script>
 const API = window.location.origin;
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
 // ─── ENROLLMENT STATE ───────────────────────────────────────────────────────
 const ENROLL_STEPS = [
     { instruction: "To'g'ri qarang", sub: "Kameraga to'g'ri qarang", icon: "😐" },
@@ -400,12 +406,16 @@ async function loadPeople() {
         if (data.faces.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
         empty.style.display = 'none';
         tbody.innerHTML = data.faces.map(f => `<tr>
-            <td><strong>${f.name}</strong></td>
-            <td><span class="badge badge-samples">${f.samples} ta</span></td>
+            <td><strong>${escapeHtml(f.name)}</strong></td>
+            <td><span class="badge badge-samples">${escapeHtml(f.samples)} ta</span></td>
             <td style="color:var(--muted);font-size:0.8rem">${f.created ? new Date(f.created).toLocaleDateString() : '—'}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="deleteFace('${f.name}')">🗑</button></td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteFaceEncoded('${encodeURIComponent(f.name)}')">🗑</button></td>
         </tr>`).join('');
     } catch (e) {}
+}
+
+function deleteFaceEncoded(encodedName) {
+    deleteFace(decodeURIComponent(encodedName));
 }
 
 async function deleteFace(name) {
@@ -426,9 +436,9 @@ async function loadLogs() {
             return `<tr>
                 <td style="color:var(--muted);font-size:0.8rem">${t.toLocaleTimeString()}</td>
                 <td><span class="badge ${badge}">${label}</span></td>
-                <td>${l.name || '—'}</td>
+                <td>${escapeHtml(l.name || '—')}</td>
                 <td>${l.confidence ? (l.confidence * 100).toFixed(1) + '%' : '—'}</td>
-                <td style="color:var(--muted)">${l.source}</td>
+                <td style="color:var(--muted)">${escapeHtml(l.source)}</td>
             </tr>`;
         }).join('');
     } catch (e) {}
@@ -451,7 +461,7 @@ async function loadDashboard() {
         const streamImg = document.getElementById('streamImg');
         const streamOff = document.getElementById('streamOff');
         if (esp.online) {
-            const streamUrl = `http://${esp.ip}/stream`;
+            const streamUrl = esp.stream_url || `http://${esp.ip}/stream`;
             if (streamImg.src !== streamUrl) streamImg.src = streamUrl;
             streamImg.style.display = 'block';
             streamOff.style.display = 'none';
@@ -465,15 +475,17 @@ async function loadDashboard() {
         const label = document.getElementById('espLabel');
         dot.className = `esp-dot ${esp.online ? 'online' : 'offline'}`;
         label.textContent = esp.online ? 'ESP32: Online' : 'ESP32: Offline';
+        const lastResult = esp.last_result ? escapeHtml(esp.last_result.name || esp.last_result.message || esp.last_result.status || '') : '';
+        const signal = esp.rssi ? ` · RSSI: ${escapeHtml(esp.rssi)} dBm` : '';
         document.getElementById('espInfo').innerHTML = esp.online
-            ? `<span style="color:var(--accent2)">● Online</span> — ${esp.last_result ? (esp.last_result.name || esp.last_result.message) : ''}`
+            ? `<span style="color:var(--accent2)">● Online</span> — ${lastResult}${signal}`
             : `<span style="color:var(--muted)">○ Offline</span>${esp.last_seen ? ' — So\'nggi: ' + new Date(esp.last_seen).toLocaleTimeString() : ''}`;
 
         document.getElementById('recentLogs').innerHTML = logs.logs.length === 0
             ? '<div style="color:var(--muted)">Hodisalar yo\'q</div>'
             : logs.logs.map(l => {
                 const icon = l.action === 'recognized' ? '🟢' : l.action === 'unknown' ? '🟡' : '⚪';
-                return `<div class="log-entry"><span class="log-time">${new Date(l.time).toLocaleTimeString()}</span>${icon} ${l.name || l.action}</div>`;
+                return `<div class="log-entry"><span class="log-time">${new Date(l.time).toLocaleTimeString()}</span>${icon} ${escapeHtml(l.name || l.action)}</div>`;
             }).join('');
     } catch (e) {}
 }

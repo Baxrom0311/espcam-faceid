@@ -11,6 +11,7 @@ from typing import List
 from datetime import datetime
 import urllib.request
 import threading
+import io
 
 app = FastAPI(title="ESP32-CAM Face ID Pro")
 
@@ -37,6 +38,151 @@ INVALID_FACE_NAME_CHARS = set('<>:"/\\|?*')
 
 FACE_DETECT_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 FACE_RECOG_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+
+# ─── TELEGRAM BOT ────────────────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN = "7268038362:AAGGbet_MruDMp4yFeTSy1hILqrvL6rt5L0"
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+CHAT_IDS_FILE = BASE_DIR / "telegram_chat_ids.json"
+
+
+def load_chat_ids() -> set:
+    if CHAT_IDS_FILE.exists():
+        try:
+            return set(json.loads(CHAT_IDS_FILE.read_text()))
+        except Exception:
+            pass
+    return set()
+
+
+def save_chat_ids(ids: set):
+    CHAT_IDS_FILE.write_text(json.dumps(list(ids)))
+
+
+telegram_chat_ids: set = load_chat_ids()
+
+
+def tg_request(method: str, data: dict = None, files: dict = None, timeout: int = 10) -> dict | None:
+    """Telegram Bot API ga so'rov yuborish"""
+    url = f"{TELEGRAM_API}/{method}"
+    try:
+        if files:
+            # Multipart form-data (rasm yuborish uchun)
+            boundary = "----TgBoundary" + str(int(time.time()))
+            body = b""
+            for key, val in (data or {}).items():
+                body += f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{val}\r\n".encode()
+            for key, (filename, filedata, content_type) in files.items():
+                body += f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n".encode()
+                body += filedata + b"\r\n"
+            body += f"--{boundary}--\r\n".encode()
+            req = urllib.request.Request(url, data=body)
+            req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        else:
+            body = json.dumps(data or {}).encode()
+            req = urllib.request.Request(url, data=body)
+            req.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        if "timed out" not in str(e):
+            print(f"TG xato: {e}")
+        return None
+
+
+def tg_send_message(chat_id: int, text: str):
+    tg_request("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+
+
+def tg_send_photo(chat_id: int, photo_bytes: bytes, caption: str):
+    tg_request(
+        "sendPhoto",
+        {"chat_id": str(chat_id), "caption": caption, "parse_mode": "HTML"},
+        {"photo": ("face.jpg", photo_bytes, "image/jpeg")},
+    )
+
+
+def tg_notify_all(photo_bytes: bytes, caption: str):
+    """Barcha /start bosgan foydalanuvchilarga notification yuborish"""
+    for chat_id in list(telegram_chat_ids):
+        try:
+            tg_send_photo(chat_id, photo_bytes, caption)
+        except Exception as e:
+            print(f"TG notify xato (chat_id={chat_id}): {e}")
+
+
+def tg_notify_all_async(photo_bytes: bytes, caption: str):
+    """Asinxron yuborish — serverni sekinlashtirmaslik uchun"""
+    threading.Thread(target=tg_notify_all, args=(photo_bytes, caption), daemon=True).start()
+
+
+def tg_polling_loop():
+    """Telegram /start buyruqlarini polling qilish"""
+    global telegram_chat_ids
+    offset = 0
+    print("Telegram bot polling boshlandi...")
+    while True:
+        try:
+            url = f"{TELEGRAM_API}/getUpdates?timeout=30&offset={offset}"
+            with urllib.request.urlopen(url, timeout=35) as resp:
+                result = json.loads(resp.read())
+            if result and result.get("ok"):
+                updates = result.get("result", [])
+                if updates:
+                    print(f"TG: {len(updates)} ta yangi xabar")
+                for update in updates:
+                    offset = update["update_id"] + 1
+                    msg = update.get("message", {})
+                    text = msg.get("text", "")
+                    chat = msg.get("chat", {})
+                    chat_id = chat.get("id")
+                    if not chat_id:
+                        continue
+                    print(f"TG: chat_id={chat_id}, text={text}")
+                    if text == "/start":
+                        telegram_chat_ids.add(chat_id)
+                        save_chat_ids(telegram_chat_ids)
+                        first_name = chat.get("first_name", "")
+                        tg_send_message(chat_id,
+                            f"\ud83d\udc4b Salom, {first_name}!\n\n"
+                            f"\ud83d\udd10 <b>ESP32-CAM Face ID</b> notification bot.\n\n"
+                            f"Siz endi yuz aniqlanganda xabar olasiz:\n"
+                            f"\u2705 Tanilgan yuz \u2014 ism va ishonch darajasi\n"
+                            f"\u26a0\ufe0f Notanish yuz \u2014 ogohlantirish\n\n"
+                            f"Bot faol! Sizga avtomatik xabar yuboriladi."
+                        )
+                        print(f"TG: yangi foydalanuvchi: {first_name} (chat_id={chat_id})")
+                    elif text in ("/status", "/stats"):
+                        faces_count = len(list(FACES_DIR.glob("*.json")))
+                        tg_send_message(chat_id,
+                            f"📊 <b>Face ID Status</b>\n\n"
+                            f"👥 Ro'yxatdagilar: {faces_count}\n"
+                            f"📡 ESP32: {'🟢 Online' if esp32_status.get('online') else '🔴 Offline'}\n"
+                            f"🔍 Jami tekshiruvlar: {stats['total_verifications']}\n"
+                            f"✅ Tanilgan: {stats['total_recognized']}\n"
+                            f"⚠️ Notanish: {stats['total_unknown']}\n"
+                            f"👥 Subscribers: {len(telegram_chat_ids)}"
+                        )
+                    elif text == "/stop":
+                        telegram_chat_ids.discard(chat_id)
+                        save_chat_ids(telegram_chat_ids)
+                        tg_send_message(chat_id, "🔕 Notificationlar o'chirildi. Qayta yoqish uchun /start bosing.")
+                    else:
+                        # Faqat matnli xabarlar bo'lsa javob beramiz
+                        if text:
+                            tg_send_message(chat_id,
+                                f"❓ <b>Noma'lum buyruq:</b> {text}\n\n"
+                                f"Quyidagi buyruqlardan foydalaning:\n"
+                                f"▶️ /start — Notificationlarni yoqish\n"
+                                f"📊 /status yoki /stats — Tizim holatini ko'rish\n"
+                                f"⏹️ /stop — Notificationlarni o'chirish"
+                            )
+            else:
+                print(f"TG polling javob: {result}")
+        except Exception as e:
+            if "timed out" not in str(e):
+                print(f"TG polling xato: {e}")
+            time.sleep(2)
+
 
 face_detector = None
 face_recognizer = None
@@ -170,6 +316,9 @@ def startup():
             access_log.extend(saved[:LOG_MAX])
         except Exception:
             pass
+    # Telegram bot polling ni background thread da ishga tushirish
+    tg_thread = threading.Thread(target=tg_polling_loop, daemon=True)
+    tg_thread.start()
 
 
 @app.on_event("shutdown")
@@ -308,15 +457,36 @@ async def verify_face(request: Request, file: UploadFile = File(...), source: st
             best_match = name
 
     confidence = round(best_score, 4)
+    now_str = datetime.now().strftime("%H:%M:%S")
 
     if best_score >= COSINE_THRESHOLD:
         stats["total_recognized"] += 1
         result = {"status": "ok", "name": best_match, "confidence": confidence}
         add_log_entry("recognized", best_match, confidence, source)
+        # Telegram notification — tanilgan yuz
+        if telegram_chat_ids:
+            caption = (
+                f"✅ <b>Yuz tanildi!</b>\n\n"
+                f"👤 Ism: <b>{best_match}</b>\n"
+                f"📊 Ishonch: {confidence * 100:.1f}%\n"
+                f"🕐 Vaqt: {now_str}\n"
+                f"📡 Manba: {source}"
+            )
+            tg_notify_all_async(contents, caption)
     else:
         stats["total_unknown"] += 1
         result = {"status": "unknown", "message": "Tanilmadi", "confidence": confidence}
         add_log_entry("unknown", None, confidence, source)
+        # Telegram notification — notanish yuz
+        if telegram_chat_ids:
+            caption = (
+                f"⚠️ <b>Notanish yuz aniqlandi!</b>\n\n"
+                f"❌ Ro'yxatda yo'q\n"
+                f"📊 Eng yaqin moslik: {confidence * 100:.1f}%\n"
+                f"🕐 Vaqt: {now_str}\n"
+                f"📡 Manba: {source}"
+            )
+            tg_notify_all_async(contents, caption)
 
     if source == "esp32":
         update_esp32_status(request, result=result)
